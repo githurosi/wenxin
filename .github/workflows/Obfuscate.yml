@@ -5,11 +5,11 @@ on:
     branches:
       - main
   schedule:
-    - cron: "0 1 * * *"  # 每天UTC时间01:00执行
+    - cron: "0 1 * * *"
 
 permissions:
-  contents: write        # 允许写入仓库内容
-  security-events: write # 允许记录安全事件
+  contents: write
+  security-events: write
 
 env:
   OBFUSCATION_OPTIONS: >-
@@ -26,25 +26,33 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # 根据实际需要调整超时时间
+    timeout-minutes: 15
 
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 需要完整历史记录进行force push
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: npm      # 启用npm缓存加速安装
+          cache: npm  # 启用npm缓存
+
+      # 新增：确保存在 package-lock.json
+      - name: Generate package-lock.json if missing
+        run: |
+          if [ ! -f "package-lock.json" ]; then
+            echo "⚠️ package-lock.json not found, generating..."
+            npm install --package-lock-only
+          fi
 
       - name: Install global dependencies
         run: |
           npm install -g javascript-obfuscator
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}  # 使用secrets中的NPM令牌
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Verify origin.js integrity
         run: |
@@ -58,15 +66,14 @@ jobs:
         run: |
           javascript-obfuscator origin.js \
             --output _worker.js \
-            ${{ env.OBFUSCATION_OPTIONS }}  # 正确引用环境变量
+            ${{ env.OBFUSCATION_OPTIONS }}
 
       - name: Stage and commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           branch: main
           commit_message: ':arrow_up: update latest bpb panel'
-          commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
-          file_pattern: '_worker.js'  # 明确指定要提交的文件
+          file_pattern: '_worker.js'
           push_options: '--force'
 
       - name: Cleanup workspace
@@ -78,6 +85,6 @@ jobs:
       - name: Post-build security scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'node:20-alpine'  # 扫描基础镜像
+          image-ref: 'node:20-alpine'
           format: 'table'
-          exit-code: '1'  # 发现漏洞时失败
+          exit-code: '1'
