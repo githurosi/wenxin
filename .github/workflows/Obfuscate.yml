@@ -1,63 +1,74 @@
-name: Build Obfuscate BPB Panel  
-  
-on:  
-  push:  
-    branches:  
-      - main  
-  schedule:  
-    - cron: "0 1 * * *"  
-  
-permissions:  
-  contents: write  
-  
-jobs:  
-  build:  
-    runs-on: ubuntu-latest  
-  
-    steps:  
-      - name: Check out the code  
-        uses: actions/checkout@v4  
-  
-      - name: Set up Node.js  
-        uses: actions/setup-node@v4  
-        with:  
-          node-version: "latest"  
-  
-      - name: Install dependencies  
-        run: npm ci  
-  
-      - name: Clone BPB workjs  
-        run: |  
-          wget -O origin.js https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/refs/heads/main/build/unobfuscated-worker.js || { echo ",[object Object], Failed to download origin.js"; exit 1; }  
-  
-      - name: Verify origin.js integrity  
-        run: |  
-          echo "${{ secrets.ORIGIN_JS_CHECKSUM }}  origin.js" | shasum -a 256 -c  
-          if [ $? -ne 0 ]; then  
-            echo ",[object Object], Checksum verification failed"  
-            exit 1  
-          fi  
-  
-      - name: Obfuscate BPB worker js  
-        run: |  
-          javascript-obfuscator origin.js --output _worker.js \  
-          --compact true \  
-          --control-flow-flattening true \  
-          --control-flow-flattening-threshold 1 \  
-          --dead-code-injection true \  
-          --dead-code-injection-threshold 1 \  
-          --identifier-names-generator hexadecimal \  
-          --rename-globals true \  
-          --string-array true \  
-          --string-array-encoding 'rc4' \  
-          --string-array-threshold 1 \  
-          --transform-object-keys true \  
-          --unicode-escape-sequence true || { echo ",[object Object], Obfuscation failed"; exit 1; }  
-  
-      - name: Commit changes  
-        uses: stefanzweifel/git-auto-commit-action@v5  
-        with:  
-          branch: main  
-          commit_message: ':arrow_up: update latest bpb panel'  
-          commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'  
-          push_options: '--set-upstream'
+name: Build Obfuscate BPB Panel
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 1 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Clone BPB workjs
+        run: |
+          wget -O origin.js https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/refs/heads/main/build/unobfuscated-worker.js || { echo "❌ Failed to download origin.js"; exit 1; }
+
+      - name: Verify origin.js integrity
+        run: |
+          echo "${{ secrets.ORIGIN_JS_CHECKSUM }}  origin.js" | shasum -a 256 -c
+          if [ $? -ne 0 ]; then
+            echo "❌ Checksum verification failed"
+            exit 1
+          fi
+
+      - name: Obfuscate BPB worker js
+        run: |
+          javascript-obfuscator origin.js --output _worker.js \
+          --compact true \
+          --control-flow-flattening true \
+          --control-flow-flattening-threshold 1 \
+          --dead-code-injection true \
+          --dead-code-injection-threshold 1 \
+          --identifier-names-generator hexadecimal \
+          --rename-globals true \
+          --string-array true \
+          --string-array-encoding 'rc4' \
+          --string-array-threshold 1 \
+          --transform-object-keys true \
+          --unicode-escape-sequence true || { echo "❌ Obfuscation failed"; exit 1; }
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          branch: main
+          commit_message: ':arrow_up: update latest bpb panel'
+          commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
+          push_options: '--force'
+
+      - name: Post-build security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'node:lts-alpine'
+          format: 'table'
+          exit-code: '1'
