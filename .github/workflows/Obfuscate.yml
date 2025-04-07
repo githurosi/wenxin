@@ -5,11 +5,11 @@ on:
     branches:
       - main
   schedule:
-    - cron: "0 1 * * *"
+    - cron: "0 1 * * *"  # 每天UTC时间01:00执行
 
 permissions:
-  contents: write
-  security-events: write
+  contents: write        # 允许写入仓库内容
+  security-events: write # 允许记录安全事件
 
 env:
   OBFUSCATION_OPTIONS: >-
@@ -26,39 +26,58 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15  # 根据实际需要调整超时时间
 
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 需要完整历史记录进行force push
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
+          cache: npm      # 启用npm缓存加速安装
 
-      - name: Install dependencies
-        uses: npm install -g javascript-obfuscator
+      - name: Install global dependencies
+        run: |
+          npm install -g javascript-obfuscator
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}  # 使用secrets中的NPM令牌
 
       - name: Verify origin.js integrity
         run: |
           echo "${{ secrets.ORIGIN_JS_CHECKSUM }}  origin.js" | shasum -a 256 -c
+          if [ $? -ne 0 ]; then
+            echo "❌ Checksum verification failed"
+            exit 1
+          fi
 
       - name: Obfuscate BPB worker js
         run: |
-          javascript-obfuscator origin.js --output _worker.js $OBFUSCATION_OPTIONS
+          javascript-obfuscator origin.js \
+            --output _worker.js \
+            ${{ env.OBFUSCATION_OPTIONS }}  # 正确引用环境变量
 
-      - name: Commit changes
+      - name: Stage and commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           branch: main
           commit_message: ':arrow_up: update latest bpb panel'
           commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
-          push_options: '--force'  # 如果需要强制推送
+          file_pattern: '_worker.js'  # 明确指定要提交的文件
+          push_options: '--force'
 
-      - name: Cleanup
+      - name: Cleanup workspace
         run: |
           rm -rf node_modules
           rm origin.js
+          echo "🧹 Workspace cleaned"
+
+      - name: Post-build security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'node:20-alpine'  # 扫描基础镜像
+          format: 'table'
+          exit-code: '1'  # 发现漏洞时失败
