@@ -11,6 +11,18 @@ permissions:
   contents: write
   security-events: write
 
+env:
+  OBFUSCATION_OPTIONS: >-
+    --compact true
+    --control-flow-flattening true
+    --dead-code-injection true
+    --identifier-names-generator hexadecimal
+    --rename-globals true
+    --string-array true
+    --string-array-encoding 'rc4'
+    --transform-object-keys true
+    --unicode-escape-sequence true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,78 +31,34 @@ jobs:
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18.x"
-          cache: 'npm'
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          node-version: "20.x"
 
       - name: Install dependencies
-        run: npm ci
+        uses: npm install -g javascript-obfuscator
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Install Obfuscator
-        run: npm install -g javascript-obfuscator
-
-      - name: Verify BPB Worker Source
+      - name: Verify origin.js integrity
         run: |
-          wget -O origin.js https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js
-          echo "$(sha256sum origin.js)"
+          echo "${{ secrets.ORIGIN_JS_CHECKSUM }}  origin.js" | shasum -a 256 -c
 
-      - name: Obfuscate BPB Worker
+      - name: Obfuscate BPB worker js
         run: |
-          javascript-obfuscator origin.js \
-            --output _worker.js \
-            --compact true \
-            --control-flow-flattening true \
-            --control-flow-flattening-threshold 0.75 \
-            --dead-code-injection true \
-            --dead-code-injection-threshold 0.75 \
-            --identifier-names-generator hexadecimal \
-            --rename-globals true \
-            --string-array true \
-            --string-array-encoding 'rc4' \
-            --string-array-threshold 0.75 \
-            --string-array-wrappers-count 3 \
-            --string-array-wrappers-chained true \
-            --transform-object-keys true \
-            --unicode-escape-sequence true \
-            --domain-lock 'github.com'
+          javascript-obfuscator origin.js --output _worker.js $OBFUSCATION_OPTIONS
 
-      - name: Security Scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'node:18-alpine'
-          format: 'table'
-
-      - name: Commit Changes
+      - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           branch: main
-          commit_message: ':lock: Automated security update [skip ci]'
+          commit_message: ':arrow_up: update latest bpb panel'
           commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
-          push_options: '--force'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          push_options: '--force'  # 如果需要强制推送
 
-      - name: Cleanup Artifacts
+      - name: Cleanup
         run: |
-          rm -f origin.js
-          npm cache clean --force
-
-      # 修复版本号为实际存在的 v1.0.0
-      - name: Build Duration Alert
-        if: always()
-        uses: robertdebock/build-duration-alert-action@v1.0.0  # 从 v2 改为 v1.0.0
-        with:
-          threshold: 1200
+          rm -rf node_modules
+          rm origin.js
