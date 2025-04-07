@@ -38,15 +38,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: npm  # 启用npm缓存
-
-      # 新增：确保存在 package-lock.json
-      - name: Generate package-lock.json if missing
-        run: |
-          if [ ! -f "package-lock.json" ]; then
-            echo "⚠️ package-lock.json not found, generating..."
-            npm install --package-lock-only
-          fi
+          # 显式关闭缓存以绕过锁定文件检查
+          cache: off
 
       - name: Install global dependencies
         run: |
